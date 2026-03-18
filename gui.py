@@ -52,12 +52,14 @@ CMAP = "inferno"
 # ─── Материалы-пресеты ────────────────────────────────────────────────────────
 MATERIALS = {
     "Сталь (конструкционная)": 1.28e-5,
+    "Сталь (нержавеющая)":     3.91e-6,
     "Алюминий":                8.42e-5,
     "Медь":                    1.17e-4,
+    "Титан":                   2.90e-6,
+    "Чугун":                   6.67e-6,
     "Бетон":                   5.71e-7,
-    "Дерево (дуб)":            1.60e-7,
-    "Вода":                    1.43e-7,
-    "Воздух":                  2.11e-5,
+    "Гранит":                  1.40e-6,
+    "Кирпич":                  5.20e-7,
 }
 
 
@@ -133,6 +135,12 @@ class HeatSimApp(tk.Tk):
                  font=("Consolas", 10),
                  bg=C["bg"], fg=C["text_dim"]).pack(side="left")
 
+        tk.Button(hdr, text=" ? ", font=("Consolas", 11, "bold"),
+                  bg=C["input_bg"], fg=C["accent"], relief="flat",
+                  activebackground=C["border"], activeforeground=C["accent"],
+                  cursor="hand2", padx=6,
+                  command=self._show_about).pack(side="right", padx=4)
+
         tk.Frame(self, bg=C["border"], height=1).pack(fill="x")
 
         main = tk.Frame(self, bg=C["bg"])
@@ -184,13 +192,34 @@ class HeatSimApp(tk.Tk):
             "Общее время моделирования")
 
         # Температуры
-        self._section(parent, "Температурные условия (°C)")
+        self._section(parent, "Начальная температура (°C)")
         self.t_init_var = self._entry_row(
             parent, "T начальная", "20",
             "Начальная температура внутри тела")
-        self.t_bnd_var = self._entry_row(
-            parent, "T граница", "100",
-            "Температура Дирихле на всех гранях")
+
+        self._section(parent, "Граничные условия (°C)")
+        bc_frame = tk.Frame(parent, bg=C["panel"])
+        bc_frame.pack(fill="x", padx=16, pady=(2, 4))
+
+        # Сетка 3x2: X-/X+, Y-/Y+, Z-/Z+
+        labels = ["X−", "X+", "Y−", "Y+", "Z−", "Z+"]
+        defaults = [100, 100, 100, 100, 100, 100]
+        self.bc_vars = []
+        for col in range(2):
+            bc_frame.columnconfigure(col*2+1, weight=1)
+        for n, (lbl, dflt) in enumerate(zip(labels, defaults)):
+            row, col = divmod(n, 2)
+            var = tk.StringVar(value=str(dflt))
+            self.bc_vars.append(var)
+            tk.Label(bc_frame, text=lbl, font=("Consolas", 9, "bold"),
+                     bg=C["panel"], fg=C["accent"], width=3, anchor="e"
+                     ).grid(row=row, column=col*2, padx=(4,2), pady=2, sticky="e")
+            tk.Entry(bc_frame, textvariable=var, font=("Consolas", 9),
+                     bg=C["input_bg"], fg=C["text"],
+                     insertbackground=C["accent"], relief="flat",
+                     highlightthickness=1, highlightbackground=C["border"],
+                     width=7
+                     ).grid(row=row, column=col*2+1, padx=(0,8), pady=2, sticky="ew")
 
         # Частота сохранения
         self._section(parent, "Частота сохранения")
@@ -334,6 +363,7 @@ class HeatSimApp(tk.Tk):
     # ── Сбор параметров и формирование команды ────────────────────────────────
     def _get_params(self):
         try:
+            bc = [float(v.get()) for v in self.bc_vars]
             return {
                 "nx":         int(self.nx_var.get()),
                 "ny":         int(self.ny_var.get()),
@@ -341,7 +371,9 @@ class HeatSimApp(tk.Tk):
                 "alpha":      float(self.alpha_var.get()),
                 "t_end":      float(self.t_end_var.get()),
                 "t_init":     float(self.t_init_var.get()),
-                "t_boundary": float(self.t_bnd_var.get()),
+                "t_xm": bc[0], "t_xp": bc[1],
+                "t_ym": bc[2], "t_yp": bc[3],
+                "t_zm": bc[4], "t_zp": bc[5],
                 "save_every": int(self.save_var.get()),
             }
         except ValueError as e:
@@ -358,7 +390,12 @@ class HeatSimApp(tk.Tk):
             "--alpha",      f"{p['alpha']:.6e}",
             "--t_end",      str(p["t_end"]),
             "--t_init",     str(p["t_init"]),
-            "--t_boundary", str(p["t_boundary"]),
+            "--t_xm",       str(p["t_xm"]),
+            "--t_xp",       str(p["t_xp"]),
+            "--t_ym",       str(p["t_ym"]),
+            "--t_yp",       str(p["t_yp"]),
+            "--t_zm",       str(p["t_zm"]),
+            "--t_zp",       str(p["t_zp"]),
             "--save_every", str(p["save_every"]),
         ]
 
@@ -397,6 +434,14 @@ class HeatSimApp(tk.Tk):
     def _run_thread(self, exe, cmd):
         try:
             workdir = os.path.dirname(os.path.abspath(exe))
+            # Очищаем папку output перед новым запуском
+            out_dir_clean = os.path.join(workdir, "output")
+            if os.path.exists(out_dir_clean):
+                import shutil
+                for f in os.listdir(out_dir_clean):
+                    if f.endswith(".csv"):
+                        os.remove(os.path.join(out_dir_clean, f))
+
             self._proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -504,20 +549,34 @@ class HeatSimApp(tk.Tk):
         gs  = GridSpec(1, 2, figure=fig, wspace=0.35)
 
         for i, (col, label, color) in enumerate([
-            ("T_center", "Температура в центре [°C]", C["accent2"]),
-            ("T_mean",   "Средняя температура [°C]",  C["accent"]),
+            ("T_center", "T в центре тела [°C]", C["accent2"]),
+            ("T_mean",   "Средняя T по объёму [°C]",  C["accent"]),
         ]):
             ax = fig.add_subplot(gs[0, i])
             self._ax_style(ax)
             ax.plot(df["time"], df[col], color=color, linewidth=2)
-            ax.fill_between(df["time"], df[col], alpha=0.12, color=color)
+            # Заливка только в положительной или отрицательной зоне
+            t_min = float(df[col].min())
+            t_max = float(df[col].max())
+            ax.fill_between(df["time"], df[col], t_min, alpha=0.12, color=color)
+            # Горизонтальная линия на уровне T_boundary (максимум = граница)
+            ax.axhline(y=t_max, color=color, linewidth=0.8, linestyle="--", alpha=0.5)
+            # Линия нуля если диапазон пересекает 0
+            if t_min < 0 < t_max:
+                ax.axhline(y=0, color=C["border"], linewidth=0.8, linestyle=":")
             ax.set_xlabel("Время [с]", color=C["text_dim"], fontsize=9)
             ax.set_ylabel(label, color=C["text_dim"], fontsize=9)
             ax.set_title(label, color=C["text"], fontsize=10)
+            # Подпись начальной и конечной температуры
+            ax.annotate(f"{t_min:.0f}°C", xy=(df["time"].iloc[0], t_min),
+                        xytext=(5, 5), textcoords="offset points",
+                        color=C["text_dim"], fontsize=8)
+            ax.annotate(f"{t_max:.0f}°C", xy=(df["time"].iloc[-1], t_max),
+                        xytext=(-40, -12), textcoords="offset points",
+                        color=C["text_dim"], fontsize=8)
 
         self._embed_fig(self.tab_history, fig)
 
-    # Вкладка 2 — Срезы XY
     def _draw_slices(self, out_dir):
         files = sorted(glob.glob(os.path.join(out_dir, "slice_z_step*.csv")))
         if not files:
@@ -525,8 +584,12 @@ class HeatSimApp(tk.Tk):
         idxs = np.linspace(0, len(files)-1, min(6, len(files)), dtype=int)
         sel  = [files[i] for i in idxs]
 
-        all_T = pd.concat([pd.read_csv(f)["T"] for f in sel])
-        vmin, vmax = all_T.min(), all_T.max()
+        # Единый диапазон из ВСЕХ файлов
+        all_T = pd.concat([pd.read_csv(f)["T"] for f in files])
+        vmin, vmax = float(all_T.min()), float(all_T.max())
+        if abs(vmax - vmin) < 0.01:
+            vmin -= 1.0
+            vmax += 1.0
 
         rows = 2 if len(sel) > 3 else 1
         cols = (len(sel) + rows - 1) // rows
@@ -536,22 +599,26 @@ class HeatSimApp(tk.Tk):
             df   = pd.read_csv(fpath)
             step = int(re.search(r"step(\d+)", fpath).group(1))
             piv  = df.pivot_table(index="y", columns="x", values="T")
+            # Средняя только по внутренним узлам (убираем граничные)
+            interior = piv.values[1:-1, 1:-1]
+            mean_t = float(interior.mean()) if interior.size > 0 else float(piv.values.mean())
 
             ax = fig.add_subplot(rows, cols, n + 1)
             ax.set_facecolor(C["panel"])
             im = ax.imshow(piv.values, origin="lower", aspect="equal",
                            cmap=CMAP, vmin=vmin, vmax=vmax, extent=[0,1,0,1])
-            ax.set_title(f"Шаг {step}", color=C["text"], fontsize=9)
+            ax.set_title(f"Шаг {step}  (центр: {mean_t:.1f}°C)",
+                         color=C["text"], fontsize=9)
             ax.tick_params(colors=C["text_dim"], labelsize=7)
             for sp in ax.spines.values():
                 sp.set_color(C["border"])
             cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
             cb.ax.tick_params(colors=C["text_dim"], labelsize=7)
+            cb.set_label("T [°C]", color=C["text_dim"], fontsize=7)
 
         fig.tight_layout(pad=1.5)
         self._embed_fig(self.tab_slices, fig)
 
-    # Вкладка 3 — 3D + изолинии
     def _draw_3d(self, out_dir):
         from mpl_toolkits.mplot3d import Axes3D  # noqa
 
@@ -570,17 +637,29 @@ class HeatSimApp(tk.Tk):
 
         ax1 = fig.add_subplot(gs[0, 0])
         ax1.set_facecolor(C["panel"])
-        cf = ax1.contourf(XX, YY, Z, levels=20, cmap=CMAP)
-        ax1.contour(XX, YY, Z, levels=10, colors="white",
-                    linewidths=0.4, alpha=0.4)
         ax1.set_title(f"Изолинии T (шаг {step})", color=C["text"], fontsize=10)
         ax1.set_xlabel("x [м]", color=C["text_dim"], fontsize=9)
         ax1.set_ylabel("y [м]", color=C["text_dim"], fontsize=9)
         ax1.tick_params(colors=C["text_dim"], labelsize=8)
         for sp in ax1.spines.values():
             sp.set_color(C["border"])
-        fig.colorbar(cf, ax=ax1, fraction=0.046).ax.tick_params(
-            colors=C["text_dim"], labelsize=7)
+
+        T_range = float(Z.max()) - float(Z.min())
+        if T_range < 0.01:
+            # Поле однородное — заливка + текст вместо изолиний
+            ax1.imshow([[float(Z.mean())]], cmap=CMAP,
+                       vmin=float(Z.mean())-1, vmax=float(Z.mean())+1,
+                       extent=[0,1,0,1], origin="lower", aspect="equal")
+            ax1.text(0.5, 0.5,
+                     f"Поле равномерное\nT \u2248 {float(Z.mean()):.2f} \u00b0C",
+                     ha="center", va="center", color="white", fontsize=12,
+                     transform=ax1.transAxes)
+        else:
+            cf = ax1.contourf(XX, YY, Z, levels=20, cmap=CMAP)
+            ax1.contour(XX, YY, Z, levels=10, colors="white",
+                        linewidths=0.4, alpha=0.4)
+            fig.colorbar(cf, ax=ax1, fraction=0.046).ax.tick_params(
+                colors=C["text_dim"], labelsize=7)
 
         ax2 = fig.add_subplot(gs[0, 1], projection="3d")
         ax2.set_facecolor(C["bg"])
@@ -641,6 +720,118 @@ class HeatSimApp(tk.Tk):
 
         fig.tight_layout(pad=1.5)
         self._embed_fig(self.tab_profile, fig)
+
+    # ── Справка ───────────────────────────────────────────────────────────────
+    def _show_about(self):
+        win = tk.Toplevel(self)
+        win.title("О программе — HeatSim 3D")
+        win.configure(bg=C["bg"])
+        win.geometry("620x580")
+        win.resizable(False, False)
+
+        # Заголовок
+        tk.Label(win, text="HeatSim 3D",
+                 font=("Consolas", 18, "bold"),
+                 bg=C["bg"], fg=C["accent"]).pack(pady=(20, 2))
+        tk.Label(win, text="Моделирование теплопроводности в сплошных средах",
+                 font=("Consolas", 10),
+                 bg=C["bg"], fg=C["text_dim"]).pack(pady=(0, 16))
+
+        tk.Frame(win, bg=C["border"], height=1).pack(fill="x", padx=20)
+
+        # Текст справки
+        text_frame = tk.Frame(win, bg=C["panel"],
+                              highlightthickness=1,
+                              highlightbackground=C["border"])
+        text_frame.pack(fill="both", expand=True, padx=20, pady=16)
+
+        txt = tk.Text(text_frame, bg=C["panel"], fg=C["text"],
+                      font=("Consolas", 10), relief="flat",
+                      wrap="word", padx=16, pady=12,
+                      state="normal", cursor="arrow")
+        txt.pack(fill="both", expand=True)
+
+        sb = ttk.Scrollbar(text_frame, command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+
+        # Теги форматирования
+        txt.tag_configure("h1", font=("Consolas", 12, "bold"),
+                          foreground=C["accent"])
+        txt.tag_configure("h2", font=("Consolas", 10, "bold"),
+                          foreground=C["accent2"])
+        txt.tag_configure("eq", font=("Consolas", 11),
+                          foreground=C["warning"],
+                          background=C["input_bg"])
+        txt.tag_configure("dim", foreground=C["text_dim"])
+
+        def h1(t): txt.insert("end", t + "\n", "h1")
+        def h2(t): txt.insert("end", t + "\n", "h2")
+        def eq(t): txt.insert("end", "  " + t + "\n", "eq")
+        def p(t):  txt.insert("end", t + "\n")
+        def dim(t): txt.insert("end", t + "\n", "dim")
+        def nl():  txt.insert("end", "\n")
+
+        h1("Физическая модель")
+        nl()
+        p("Программа решает нестационарное уравнение теплопроводности")
+        p("(уравнение Фурье–Кирхгофа) в трёхмерной области:")
+        nl()
+        eq("∂T/∂t = α · (∂²T/∂x² + ∂²T/∂y² + ∂²T/∂z²)")
+        nl()
+        p("где:")
+        dim("  T       — температура [°C]")
+        dim("  t       — время [с]")
+        dim("  α       — коэффициент температуропроводности [м²/с]")
+        dim("  α = λ / (ρ · cₚ),  λ — теплопроводность,")
+        dim("                      ρ — плотность,  cₚ — теплоёмкость")
+        nl()
+
+        h1("Численный метод")
+        nl()
+        p("Используется явная конечно-разностная схема FTCS")
+        p("(Forward Time, Centered Space):")
+        nl()
+        eq("T(n+1) = T(n) + rx·δ²xT + ry·δ²yT + rz·δ²zT")
+        nl()
+        dim("  rx = α·Δt/Δx²,  ry = α·Δt/Δy²,  rz = α·Δt/Δz²")
+        nl()
+        h2("Условие устойчивости (критерий КФЛ):")
+        eq("  2α·Δt·(1/Δx² + 1/Δy² + 1/Δz²) < 1")
+        p("Шаг Δt выбирается автоматически с коэффициентом 0.4.")
+        nl()
+
+        h1("Расчётная область и условия")
+        nl()
+        dim("  Область    : прямоугольный параллелепипед (куб по умолчанию)")
+        dim("  Сетка      : равномерная декартова Nx × Ny × Nz")
+        dim("  НУ         : T(x,y,z,0) = T начальная")
+        dim("  ГУ         : условия Дирихле — фиксированная температура")
+        dim("               на каждой из 6 граней независимо")
+        nl()
+
+        h1("Параметры программы")
+        nl()
+        dim("  α  (м²/с)     — температуропроводность материала")
+        dim("  t_end  (с)    — время моделирования")
+        dim("  Nx/Ny/Nz      — число узлов сетки по каждой оси")
+        dim("  T начальная   — температура внутри тела в момент t=0")
+        dim("  X−/X+/Y−/Y+/Z−/Z+  — температуры на 6 гранях")
+        nl()
+
+        h1("Выходные данные")
+        nl()
+        dim("  Динамика T    — T в центре тела и средняя T по времени")
+        dim("  Срезы XY      — тепловые карты плоскости z=L/2")
+        dim("  3D+Изолинии   — изолинии и 3D поверхность T(x,y)")
+        dim("  Профили       — T(x) и T(y) вдоль центральных осей")
+
+        txt.configure(state="disabled")
+
+        tk.Button(win, text="Закрыть", font=("Consolas", 10),
+                  bg=C["btn"], fg="white", relief="flat",
+                  activebackground=C["btn_hover"],
+                  cursor="hand2", pady=6,
+                  command=win.destroy).pack(pady=(0, 16), padx=20, fill="x")
 
     # ── Закрытие ──────────────────────────────────────────────────────────────
     def _on_close(self):
