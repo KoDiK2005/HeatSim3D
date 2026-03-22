@@ -13,6 +13,9 @@
 #include <string>
 #include <chrono>
 #include <direct.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 using Grid3D = std::vector<double>;
 
@@ -176,6 +179,7 @@ int main(int argc, char* argv[]) {
         }
         if (step == NSTEPS) break;
 
+        #pragma omp parallel for schedule(static) collapse(2)
         for (int i = 1; i < p.nx-1; ++i)
             for (int j = 1; j < p.ny-1; ++j)
                 for (int k = 1; k < p.nz-1; ++k) {
