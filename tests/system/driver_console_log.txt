@@ -1,0 +1,36 @@
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/tkinter/__init__.py", line 592, in get
+    return self._tk.getint(value)
+           ^^^^^^^^^^^^^^^^^^^^^^
+_tkinter.TclError: expected integer but got "abc"
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/tkinter/__init__.py", line 1967, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py", line 468, in _start_sim
+    p = self._get_params()
+        ^^^^^^^^^^^^^^^^^^
+  File "/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py", line 432, in _get_params
+    "nx":         int(self.nx_var.get()),
+                      ^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/tkinter/__init__.py", line 594, in get
+    return int(self._tk.getdouble(value))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+_tkinter.TclError: expected floating-point number but got "abc"
+/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py:854: UserWarning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+  fig.tight_layout(pad=1.5)
+/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py:912: UserWarning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+  fig.tight_layout(pad=1.5)
+No artists with labels found to put in legend.  Note that artists whose label start with an underscore are ignored when legend() is called with no argument.
+/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py:997: UserWarning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+  fig.tight_layout(pad=1.5)
+/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py:854: UserWarning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+  fig.tight_layout(pad=1.5)
+/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py:912: UserWarning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+  fig.tight_layout(pad=1.5)
+/tmp/claude-1000/-home-mark-----------HeatSim3D/593128de-2089-40de-8d36-75a18483d01d/scratchpad/system_test/gui.py:997: UserWarning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+  fig.tight_layout(pad=1.5)
