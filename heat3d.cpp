@@ -12,7 +12,11 @@
 #include <iomanip>
 #include <string>
 #include <chrono>
+#ifdef _WIN32
 #include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -124,7 +128,11 @@ int main(int argc, char* argv[]) {
     std::cout << "  Steps     : " << NSTEPS << "\n";
     std::cout << "========================================\n\n";
 
+#ifdef _WIN32
     _mkdir("output");
+#else
+    mkdir("output", 0755);
+#endif
     std::string outDir = "output";
 
     Grid3D T(p.nx * p.ny * p.nz, p.t_init);
