@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 import matplotlib
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 
 # Расчётное ядро: heat3d на Linux/macOS, heat3d.exe на Windows
 ENGINE = "heat3d.exe" if os.name == "nt" else "heat3d"
@@ -68,8 +69,27 @@ GRAYS      = ["black", "#555555", "#888888", "#aaaaaa"]
 MARKERS    = ["o", "s", "^", "D"]
 
 
+# Режим «для LaTeX»: рисунок вставляется в отчёт в натуральную величину
+# (\includegraphics без масштабирования), поэтому шрифт на рисунке совпадает
+# с основным текстом по размеру; подпись «Рисунок N — ...» ставит сам LaTeX,
+# а под каждой панелью пишется «а)», «б)».
+LATEX = None
+
+
+def set_latex_mode(width_in=6.5, height_in=3.2, font_pt=14):
+    global LATEX
+    LATEX = dict(size=(width_in, height_in), pt=font_pt)
+
+
 def _style():
-    return matplotlib.rc_context(STYLE)
+    st = dict(STYLE)
+    if LATEX:
+        pt = LATEX["pt"]
+        st.update({"font.size": pt, "axes.labelsize": pt,
+                   "xtick.labelsize": pt, "ytick.labelsize": pt,
+                   "legend.fontsize": pt, "lines.linewidth": 1.0,
+                   "axes.linewidth": 0.6, "grid.linewidth": 0.4})
+    return matplotlib.rc_context(st)
 
 
 def _ref_line(ax, y, label):
@@ -81,7 +101,8 @@ def _ref_line(ax, y, label):
                 annotation_clip=False)
 
 
-def _panel(ax, x, y, xlabel, ylabel, legend=None, ref=None, series=None):
+def _panel(ax, x, y, xlabel, ylabel, legend=None, ref=None, series=None,
+           legend_loc="best"):
     """
     Одна панель: кривая (или несколько series=[(x, y, label), ...]),
     подписи осей, легенда в рамке сверху справа, линия-ориентир ref=(y, label).
@@ -97,30 +118,50 @@ def _panel(ax, x, y, xlabel, ylabel, legend=None, ref=None, series=None):
     ax.set_ylabel(ylabel)
     ax.margins(x=0.02)
     if any(lbl for _, _, lbl in series):
-        ax.legend(loc="best", handlelength=1.6, borderpad=0.3)
+        ax.legend(loc=legend_loc, handlelength=1.6, borderpad=0.3)
     if ref is not None:
         _ref_line(ax, *ref)
 
 
 def figure_pair(left, right, caption, num=None, out_path=None, fmts=("png",),
-                xticks=None):
+                xticks=None, legend_top=False):
     """
     Пара графиков (а) и (б) с общей подписью «Рисунок N — caption».
     left / right — словари аргументов для _panel().
     Возвращает список сохранённых файлов (или Figure, если out_path=None).
     """
     with _style():
-        fig = Figure(figsize=(10, 5.2))
+        fig = Figure(figsize=LATEX["size"] if LATEX else (10, 5.2))
         axes = fig.subplots(1, 2)
-        fig.subplots_adjust(left=0.09, right=0.9, wspace=0.42,
-                            top=0.95, bottom=0.27)
-        for ax, spec in zip(axes, (left, right)):
+        if LATEX:
+            fig.subplots_adjust(wspace=0.45)
+        else:
+            fig.subplots_adjust(left=0.09, right=0.9, wspace=0.42,
+                                top=0.95, bottom=0.27)
+        for n, (ax, spec) in enumerate(zip(axes, (left, right))):
             _panel(ax, **spec)
             if xticks is not None:
                 ax.set_xticks(list(xticks))
-        title = f"Рисунок {num} — {caption}" if num else caption
-        fig.text(0.5, 0.04, title, ha="center", va="bottom", fontsize=15,
-                 wrap=True)
+            if LATEX:
+                ax.set_xlabel(ax.get_xlabel() + "\n" + "аб"[n] + ")")
+                # десятичная запятая, как в тексте отчёта
+                comma = FuncFormatter(lambda v, _: f"{v:g}".replace(".", ","))
+                ax.xaxis.set_major_formatter(comma)
+                ax.yaxis.set_major_formatter(comma)
+        if legend_top and LATEX:
+            # Общая легенда над панелями — не закрывает кривые
+            src = max(axes, key=lambda a: len(a.get_lines()))
+            handles, labels = src.get_legend_handles_labels()
+            for ax in axes:
+                if ax.get_legend():
+                    ax.get_legend().remove()
+            fig.legend(handles, labels, loc="lower center", ncol=len(labels),
+                       bbox_to_anchor=(0.5, 0.97), handlelength=1.8,
+                       columnspacing=1.0, borderpad=0.3)
+        if not LATEX:
+            title = f"Рисунок {num} — {caption}" if num else caption
+            fig.text(0.5, 0.04, title, ha="center", va="bottom", fontsize=15,
+                     wrap=True)
         if out_path is None:
             return fig
         saved = []
@@ -232,19 +273,19 @@ def fig_speedup(bench_csv, save_to, num=None, fmts=("png",)):
             ep.append((g["threads"], g["efficiency"], lbl))
         sp.append((p, p, r"$S_p = p$"))
         return figure_pair(
-            dict(x=None, y=None, series=sp, xlabel="число потоков p",
+            dict(x=None, y=None, series=sp, xlabel="число потоков $p$",
                  ylabel=r"ускорение $S_p = t_1 / t_p$"),
-            dict(x=None, y=None, series=ep, xlabel="число потоков p",
+            dict(x=None, y=None, series=ep, xlabel="число потоков $p$",
                  ylabel=r"эффективность $E_p = S_p / p$", ref=(1.0, "")),
             "Ускорение (а) и эффективность (б) параллельной OpenMP-версии\n"
             "программы для расчётных сеток разного размера.",
-            num, out, fmts, xticks=p)
+            num, out, fmts, xticks=p, legend_top=True)
 
     p = df["threads"]
     return figure_pair(
         dict(x=p, y=df["time"], legend=r"$t_p$",
-             xlabel="число потоков p", ylabel="время расчёта, с"),
-        dict(x=None, y=None, xlabel="число потоков p",
+             xlabel="число потоков $p$", ylabel="время расчёта, с"),
+        dict(x=None, y=None, xlabel="число потоков $p$",
              ylabel=r"ускорение $S_p = t_1 / t_p$",
              series=[(p, df["speedup"], r"$S_p$"),
                      (p, p, r"$S_p = p$")]),
