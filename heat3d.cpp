@@ -74,6 +74,7 @@ struct Params {
     double t_ym = 100.0, t_yp = 100.0;
     double t_zm = 100.0, t_zp = 100.0;
     int    save_every = 500;
+    int    threads    = 0;   // 0 — по умолчанию OpenMP (все ядра)
 };
 
 Params parseArgs(int argc, char* argv[]) {
@@ -93,6 +94,7 @@ Params parseArgs(int argc, char* argv[]) {
         else if (key=="--t_zm")       { p.t_zm       = std::stod(val); ++i; }
         else if (key=="--t_zp")       { p.t_zp       = std::stod(val); ++i; }
         else if (key=="--save_every") { p.save_every = std::stoi(val); ++i; }
+        else if (key=="--threads")    { p.threads    = std::stoi(val); ++i; }
     }
     return p;
 }
@@ -114,6 +116,12 @@ int main(int argc, char* argv[]) {
     const double dt = computeStableDt(dx, dy, dz, p.alpha);
     const int NSTEPS = static_cast<int>(p.t_end / dt) + 1;
 
+    int nThreads = 1;
+#ifdef _OPENMP
+    if (p.threads > 0) omp_set_num_threads(p.threads);
+    nThreads = omp_get_max_threads();
+#endif
+
     std::cout << "========================================\n";
     std::cout << "  3D Heat Transfer Simulation (FTCS)\n";
     std::cout << "========================================\n";
@@ -126,6 +134,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  Y- / Y+   : " << p.t_ym << " / " << p.t_yp << " C\n";
     std::cout << "  Z- / Z+   : " << p.t_zm << " / " << p.t_zp << " C\n";
     std::cout << "  Steps     : " << NSTEPS << "\n";
+    std::cout << "  Threads   : " << nThreads << "\n";
     std::cout << "========================================\n\n";
 
 #ifdef _WIN32
@@ -204,8 +213,19 @@ int main(int argc, char* argv[]) {
     }
 
     auto t1 = high_resolution_clock::now();
-    std::cout << "\n  Simulation done in "
-              << duration_cast<milliseconds>(t1-t0).count()/1000.0 << " s\n";
+    const double elapsed = duration_cast<milliseconds>(t1-t0).count()/1000.0;
+    std::cout << "\n  Simulation done in " << elapsed << " s\n";
+
+    // Параметры расчёта — для подписей графиков (report_plots.py)
+    std::ofstream prm(outDir + "/params.csv");
+    prm << "key,value\n"
+        << "nx," << p.nx << "\nny," << p.ny << "\nnz," << p.nz << "\n"
+        << std::scientific << "alpha," << p.alpha << "\n" << std::defaultfloat
+        << "t_end," << p.t_end << "\nt_init," << p.t_init << "\n"
+        << "t_xm," << p.t_xm << "\nt_xp," << p.t_xp << "\n"
+        << "t_ym," << p.t_ym << "\nt_yp," << p.t_yp << "\n"
+        << "t_zm," << p.t_zm << "\nt_zp," << p.t_zp << "\n"
+        << "threads," << nThreads << "\nelapsed," << elapsed << "\n";
     std::cout << "  Output saved to: ./" << outDir << "/\n";
     return 0;
 }
