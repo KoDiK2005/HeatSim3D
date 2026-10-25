@@ -1,0 +1,15 @@
+key,value
+nx,31
+ny,31
+nz,31
+alpha,1.280000e-05
+t_end,20000
+t_init,20
+t_xm,100
+t_xp,100
+t_ym,100
+t_yp,100
+t_zm,100
+t_zp,100
+threads,4
+elapsed,0.458

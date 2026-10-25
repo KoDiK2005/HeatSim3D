@@ -15,13 +15,26 @@
 
 ```
 python report_plots.py output --num 3.5 --fmt png pdf     # T(t) и профили T(x), T(y)
-python report_plots.py --bench --exe heat3d.exe --threads 1 2 4 8 --nx 80 --num 3.7
-                                                          # время и ускорение OpenMP
+python report_plots.py --bench --threads 1 2 4 8 --nx 50 100 150 --num 3.7
+                                                          # ускорение и эффективность OpenMP
 ```
 
 Рисунки сохраняются в `output/report/` (или `bench/output/report/`).
 В GUI то же самое делают кнопки «Графики для отчёта» и «Замер ускорения OpenMP».
 
 `heat3d` принимает `--threads N` (число потоков OpenMP) и пишет `output/params.csv`.
-Сборка с OpenMP: `g++ -O2 -fopenmp -std=c++17 heat3d.cpp -o heat3d.exe`
-(Visual Studio: C/C++ → Язык → Поддержка OpenMP → Да, `/openmp`).
+
+Linux и Windows
+---------------
+| | Linux | Windows |
+|---|---|---|
+| Расчётное ядро | `heat3d` | `heat3d.exe` |
+| Сборка ядра | `./build_linux.sh engine` | `build_exe.bat` (MinGW g++) или Visual Studio с `/openmp`; из Linux — `./build_windows_cross.sh` |
+| Сборка GUI в один файл | `./build_linux.sh` → `dist/HeatSim3D` | `build_exe.bat` → `dist\HeatSim3D.exe` |
+| Запуск без сборки | `python3 gui.py` (нужен `python3-tk`) | `python gui.py` |
+
+GUI сам выбирает ядро под текущую ОС. Обе сборки ядра готовы в репозитории
+(`heat3d.exe` собран MinGW статически — DLL не нужны).
+
+Тесты OpenMP-версии: `python -m pytest tests/integration/test_openmp.py -v`.
+Отчёт о работе: [Отчёт_НИР_OpenMP.md](Отчёт_НИР_OpenMP.md).

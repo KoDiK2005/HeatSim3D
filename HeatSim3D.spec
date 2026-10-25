@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+
+# Расчётное ядро под текущую ОС: heat3d.exe (Windows) или heat3d (Linux)
+ENGINE = 'heat3d.exe' if os.name == 'nt' else 'heat3d'
 
 
 a = Analysis(
     ['gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('heat3d.exe', '.'), ('heat3d.cpp', '.')],
+    datas=[(ENGINE, '.'), ('heat3d.cpp', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

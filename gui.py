@@ -10,7 +10,7 @@ gui.py — Графический интерфейс для 3D моделиро�
     pip install pyinstaller
     pyinstaller --onefile --windowed --add-data "heat3d.exe;." --name "HeatSim3D" gui.py
 
-Требует: heat3d.exe в той же папке
+Требует: heat3d.exe (Windows) или heat3d (Linux) в той же папке
 """
 
 import tkinter as tk
@@ -70,11 +70,15 @@ def resource_path(name):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
 
 
+# Расчётное ядро: heat3d.exe на Windows, heat3d на Linux
+ENGINE = "heat3d.exe" if os.name == "nt" else "heat3d"
+
+
 def find_exe():
     candidates = [
-        resource_path("heat3d.exe"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "heat3d.exe"),
-        "heat3d.exe",
+        resource_path(ENGINE),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ENGINE),
+        ENGINE,
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -480,8 +484,8 @@ class HeatSimApp(tk.Tk):
         exe = find_exe()
         if exe is None:
             messagebox.showerror(
-                "heat3d.exe не найден",
-                "Положите heat3d.exe в ту же папку что и gui.py")
+                f"{ENGINE} не найден",
+                f"Положите {ENGINE} в ту же папку что и gui.py")
             return
 
         # Предупреждение если будет слишком много файлов
