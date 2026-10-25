@@ -326,6 +326,14 @@ class HeatSimApp(tk.Tk):
             command=self._stop_sim)
         self.stop_btn.pack(fill="x")
 
+        for text, cmd in [("📄  Графики для отчёта",     self._save_report),
+                          ("⏱  Замер ускорения OpenMP", self._start_bench)]:
+            tk.Button(btn_f, text=text, font=("Consolas", 10),
+                      bg=C["input_bg"], fg=C["text"], relief="flat",
+                      activebackground=C["border"], activeforeground="white",
+                      cursor="hand2", pady=6,
+                      command=cmd).pack(fill="x", pady=(6, 0))
+
         # Лог
         tk.Frame(parent, bg=C["border"], height=1).pack(fill="x", pady=(8, 4))
         tk.Label(parent, text="ЛОГ", font=("Consolas", 8, "bold"),
@@ -588,6 +596,61 @@ class HeatSimApp(tk.Tk):
             self._draw_all(out_dir)
         else:
             self.progress_lbl.config(text="Остановлено / ошибка", fg=C["warning"])
+
+    # ── Графики для отчёта (report_plots.py) ──────────────────────────────────
+    def _save_report(self):
+        import report_plots
+        out_dir = getattr(self, "_output_dir", None)
+        if not out_dir or not os.path.exists(os.path.join(out_dir, "history.csv")):
+            messagebox.showwarning("Нет данных", "Сначала выполните расчёт.")
+            return
+        try:
+            saved = report_plots.make_all(out_dir, fmts=("png", "pdf"))
+        except Exception as e:
+            messagebox.showerror("Ошибка", str(e))
+            return
+        for f in saved:
+            self._log(f"[ОТЧЁТ] {f}")
+        messagebox.showinfo("Графики сохранены",
+                            "Папка: " + os.path.dirname(saved[0]))
+
+    def _start_bench(self):
+        import report_plots
+        exe = find_exe()
+        p = self._get_params()
+        if not exe or not p or self._running:
+            return
+        sim = self._build_cmd(exe, p)[1:]
+        sim[sim.index("--save_every") + 1] = "1000000000"   # без записи срезов
+        threads = report_plots.default_threads()
+        workdir = os.path.join(os.path.dirname(os.path.abspath(exe)), "bench")
+        self._running = True
+        self.run_btn.config(state="disabled")
+        self._log(f"[ЗАМЕР] потоки: {threads}")
+
+        def work():
+            try:
+                bench = report_plots.run_benchmark(exe, threads, sim, workdir,
+                                                   log=self._log)
+                save_to = os.path.join(os.path.dirname(bench), "report")
+                os.makedirs(save_to, exist_ok=True)
+                for f in report_plots.fig_speedup(bench, save_to,
+                                                  fmts=("png", "pdf")):
+                    self._log(f"[ОТЧЁТ] {f}")
+                # Копия рядом с результатами расчёта — попадёт в «Графики для отчёта»
+                out_dir = getattr(self, "_output_dir", None)
+                if out_dir and os.path.isdir(out_dir):
+                    import shutil
+                    shutil.copy(bench, out_dir)
+            except Exception as e:
+                self._log(f"[ОШИБКА] {e}")
+            finally:
+                def done():
+                    self._running = False
+                    self.run_btn.config(state="normal")
+                self.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
 
     # ── Лог ───────────────────────────────────────────────────────────────────
     def _log(self, msg):
