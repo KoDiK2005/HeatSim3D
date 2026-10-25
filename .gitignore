@@ -1,3 +1,14 @@
 __pycache__/
 output/
 bench/
+# LaTeX
+*.aux
+*.log
+*.toc
+*.out
+*.bbl
+*.bcf
+*.blg
+*.synctex.gz
+*.fdb_latexmk
+*.fls
