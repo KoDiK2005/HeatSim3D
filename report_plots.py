@@ -8,7 +8,7 @@ report_plots.py — графики для отчёта/НИР в «журнал�
 Использование из командной строки:
     python report_plots.py output                    # все рисунки по результатам расчёта
     python report_plots.py output --num 3.5 --fmt png pdf
-    python report_plots.py --bench --exe heat3d.exe --threads 1 2 4 8 --nx 80
+    python report_plots.py --bench --threads 1 2 4 8 --nx 50 100 150
                                                      # замер ускорения OpenMP + рисунок
 
 Из GUI: кнопки «Графики для отчёта» и «Замер ускорения OpenMP».
@@ -25,6 +25,9 @@ import numpy as np
 import pandas as pd
 import matplotlib
 from matplotlib.figure import Figure
+
+# Расчётное ядро: heat3d на Linux/macOS, heat3d.exe на Windows
+ENGINE = "heat3d.exe" if os.name == "nt" else "heat3d"
 
 # ─── Стиль ────────────────────────────────────────────────────────────────────
 STYLE = {
@@ -62,6 +65,7 @@ STYLE = {
 # Чёрно-белые варианты линий для нескольких кривых на одной оси
 LINESTYLES = ["-", "--", "-.", ":"]
 GRAYS      = ["black", "#555555", "#888888", "#aaaaaa"]
+MARKERS    = ["o", "s", "^", "D"]
 
 
 def _style():
@@ -85,8 +89,10 @@ def _panel(ax, x, y, xlabel, ylabel, legend=None, ref=None, series=None):
     if series is None:
         series = [(x, y, legend)]
     for n, (sx, sy, lbl) in enumerate(series):
+        few = len(sx) <= 12          # мало точек (замеры) — отмечаем маркерами
         ax.plot(sx, sy, color=GRAYS[n % 4], linestyle=LINESTYLES[n % 4],
-                label=lbl)
+                marker=MARKERS[n % 4] if few else None, markersize=5,
+                markerfacecolor="white", label=lbl)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.margins(x=0.02)
@@ -214,7 +220,27 @@ def fig_profiles(out_dir, save_to, num=None, fmts=("png",)):
 
 def fig_speedup(bench_csv, save_to, num=None, fmts=("png",)):
     df = pd.read_csv(bench_csv)
-    p  = df["threads"]
+    out = os.path.join(save_to, "fig_speedup")
+
+    if "nx" in df and df["nx"].nunique() > 1:
+        # Несколько сеток: ускорение (а) и эффективность (б) для каждой N³
+        p = sorted(df["threads"].unique())
+        sp, ep = [], []
+        for nx, g in df.groupby("nx"):
+            lbl = rf"$N = {nx}^3$"
+            sp.append((g["threads"], g["speedup"], lbl))
+            ep.append((g["threads"], g["efficiency"], lbl))
+        sp.append((p, p, r"$S_p = p$"))
+        return figure_pair(
+            dict(x=None, y=None, series=sp, xlabel="число потоков p",
+                 ylabel=r"ускорение $S_p = t_1 / t_p$"),
+            dict(x=None, y=None, series=ep, xlabel="число потоков p",
+                 ylabel=r"эффективность $E_p = S_p / p$", ref=(1.0, "")),
+            "Ускорение (а) и эффективность (б) параллельной OpenMP-версии\n"
+            "программы для расчётных сеток разного размера.",
+            num, out, fmts, xticks=p)
+
+    p = df["threads"]
     return figure_pair(
         dict(x=p, y=df["time"], legend=r"$t_p$",
              xlabel="число потоков p", ylabel="время расчёта, с"),
@@ -224,7 +250,44 @@ def fig_speedup(bench_csv, save_to, num=None, fmts=("png",)):
                      (p, p, r"$S_p = p$")]),
         "Время расчёта (а) и ускорение (б) параллельной\n"
         "OpenMP-версии программы в зависимости от числа потоков.",
-        num, os.path.join(save_to, "fig_speedup"), fmts, xticks=p)
+        num, out, fmts, xticks=p)
+
+
+def analytic_center(t, alpha, t0, tb, terms=41):
+    """
+    Аналитическое решение в центре единичного куба (все грани tb, начальная t0):
+    T = tb + (t0 - tb) Σ 64/(π³lmn) sin(lπ/2) sin(mπ/2) sin(nπ/2)
+                       · exp(-απ²(l²+m²+n²)t),  l, m, n — нечётные.
+    """
+    k = np.arange(1, terms, 2)
+    sk = (-1.0) ** ((k - 1) // 2) / k                 # sin(kπ/2)/k
+    lam = np.pi ** 2 * k ** 2
+    t = np.asarray(t, dtype=float)[:, None]
+    f = (sk * np.exp(-alpha * lam * t))               # (len(t), len(k))
+    s = 64 / np.pi ** 3 * f.sum(axis=1) ** 3          # ряд распадается на 3 множителя
+    return tb + (t0 - tb) * s
+
+
+def fig_validation(out_dir, save_to, num=None, fmts=("png",)):
+    """Сравнение с аналитикой — только для одинаковых температур граней."""
+    prm = read_params(out_dir)
+    bc = _bc_list(prm)
+    if len(bc) != 6 or len(set(bc)) != 1 or "alpha" not in prm:
+        return []
+    df = pd.read_csv(os.path.join(out_dir, "history.csv"))
+    df = df[df["time"] > 0]
+    exact = analytic_center(df["time"], prm["alpha"], prm["t_init"], bc[0])
+    scale, unit = _time_unit(float(df["time"].max()))
+    t = df["time"] / scale
+    return figure_pair(
+        dict(x=None, y=None, xlabel=f"t ({unit})", ylabel="T, °C",
+             series=[(t, df["T_center"], "численное"),
+                     (t, exact, "аналитическое")]),
+        dict(x=t, y=np.abs(df["T_center"] - exact), legend=r"$|T_c - T_{ан}|$",
+             xlabel=f"t ({unit})", ylabel="абсолютная погрешность, °C"),
+        "Температура в центре куба: численное и аналитическое\n"
+        "решения (а) и абсолютная погрешность (б).",
+        num, os.path.join(save_to, "fig_validation"), fmts)
 
 
 def make_all(out_dir, save_to=None, num_start=None, fmts=("png",)):
@@ -240,41 +303,84 @@ def make_all(out_dir, save_to=None, num_start=None, fmts=("png",)):
 
     saved = fig_history(out_dir, save_to, num(0), fmts)
     saved += fig_profiles(out_dir, save_to, num(1), fmts)
+    k = 2
+    val = fig_validation(out_dir, save_to, num(k), fmts)
+    if val:
+        saved += val
+        k += 1
     bench = os.path.join(out_dir, "benchmark.csv")
     if os.path.exists(bench):
-        saved += fig_speedup(bench, save_to, num(2), fmts)
+        saved += fig_speedup(bench, save_to, num(k), fmts)
     return saved
 
 
 # ─── Замер ускорения OpenMP ──────────────────────────────────────────────────
-def run_benchmark(exe, threads, sim_args, workdir, log=print):
+def _bench_rows(exe, threads, sim_args, workdir, log, repeat):
+    """Время расчёта для каждого числа потоков (минимум из repeat запусков)."""
+    rows = []
+    for p in threads:
+        best = None
+        for _ in range(max(1, repeat)):
+            cmd = [exe, *sim_args, "--threads", str(p)]
+            res = subprocess.run(cmd, cwd=workdir, capture_output=True,
+                                 text=True, encoding="utf-8", errors="replace")
+            m = re.search(r"Simulation done in\s*([\d.]+)", res.stdout)
+            if res.returncode != 0 or not m:
+                raise RuntimeError(f"heat3d завершился с ошибкой при p={p}:\n"
+                                   f"{res.stdout[-500:]}")
+            mt = re.search(r"Threads\s*:\s*(\d+)", res.stdout)
+            real = int(mt.group(1)) if mt else 1
+            if real != p:
+                log(f"  [!] запрошено {p} потоков, работало {real} "
+                    f"(программа собрана без OpenMP?)")
+            t = float(m.group(1))
+            best = t if best is None else min(best, t)
+        rows.append((p, best))
+        log(f"  p = {p:3d}   t = {best:.3f} с")
+    return rows
+
+
+def _with_speedup(df):
+    t1 = df["time"].iloc[0]
+    df["speedup"]    = t1 / df["time"]
+    df["efficiency"] = df["speedup"] / df["threads"]
+    return df
+
+
+def run_benchmark(exe, threads, sim_args, workdir, log=print, repeat=1):
     """
     Запускает heat3d с разным числом потоков, пишет benchmark.csv
     (threads,time,speedup,efficiency) в workdir/output и возвращает его путь.
     """
-    os.makedirs(workdir, exist_ok=True)
-    rows = []
-    for p in threads:
-        cmd = [exe, *sim_args, "--threads", str(p)]
-        res = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,
-                             encoding="utf-8", errors="replace")
-        m = re.search(r"Simulation done in\s*([\d.]+)", res.stdout)
-        if res.returncode != 0 or not m:
-            raise RuntimeError(f"heat3d завершился с ошибкой при p={p}:\n"
-                               f"{res.stdout[-500:]}")
-        mt = re.search(r"Threads\s*:\s*(\d+)", res.stdout)
-        real = int(mt.group(1)) if mt else 1
-        if real != p:
-            log(f"  [!] запрошено {p} потоков, работало {real} "
-                f"(программа собрана без OpenMP?)")
-        rows.append((p, float(m.group(1))))
-        log(f"  p = {p:3d}   t = {rows[-1][1]:.3f} с")
-
-    df = pd.DataFrame(rows, columns=["threads", "time"])
-    df["speedup"]    = df["time"].iloc[0] / df["time"]
-    df["efficiency"] = df["speedup"] / df["threads"]
+    os.makedirs(os.path.join(workdir, "output"), exist_ok=True)
+    rows = _bench_rows(exe, threads, sim_args, workdir, log, repeat)
+    df = _with_speedup(pd.DataFrame(rows, columns=["threads", "time"]))
     path = os.path.join(workdir, "output", "benchmark.csv")
     df.to_csv(path, index=False, float_format="%.4f")
+    return path
+
+
+def run_scaling(exe, sizes, threads, steps, workdir, log=print, repeat=1,
+                alpha=1.28e-5):
+    """
+    Замер на нескольких сетках N×N×N с одинаковым числом шагов по времени.
+    Пишет benchmark.csv (nx,threads,time,speedup,efficiency).
+    """
+    os.makedirs(os.path.join(workdir, "output"), exist_ok=True)
+    parts = []
+    for nx in sizes:
+        dx = 1.0 / (nx - 1)
+        dt = 0.4 / (2.0 * alpha * 3.0 / (dx * dx))     # как computeStableDt()
+        sim = ["--nx", str(nx), "--ny", str(nx), "--nz", str(nx),
+               "--alpha", f"{alpha:.6e}", "--t_end", f"{steps * dt:.6f}",
+               "--save_every", "1000000000"]
+        log(f"Сетка {nx}^3, {steps} шагов:")
+        rows = _bench_rows(exe, threads, sim, workdir, log, repeat)
+        df = _with_speedup(pd.DataFrame(rows, columns=["threads", "time"]))
+        df.insert(0, "nx", nx)
+        parts.append(df)
+    path = os.path.join(workdir, "output", "benchmark.csv")
+    pd.concat(parts).to_csv(path, index=False, float_format="%.4f")
     return path
 
 
@@ -298,20 +404,22 @@ def main(argv=None):
                     help="форматы: png pdf svg")
     ap.add_argument("--bench", action="store_true",
                     help="замерить ускорение OpenMP и построить рисунок")
-    ap.add_argument("--exe", default="heat3d.exe", help="путь к heat3d")
+    ap.add_argument("--exe", default=ENGINE, help="путь к heat3d")
     ap.add_argument("--threads", nargs="+", type=int,
                     help="число потоков, по умолчанию 1 2 4 ... до числа ядер")
-    ap.add_argument("--nx", type=int, default=80, help="размер сетки для замера")
-    ap.add_argument("--t_end", type=float, default=20000)
+    ap.add_argument("--nx", type=int, nargs="+", default=[80],
+                    help="размер сетки N (N×N×N); несколько — сравнение сеток")
+    ap.add_argument("--steps", type=int, default=300,
+                    help="число шагов по времени в каждом замере")
+    ap.add_argument("--repeat", type=int, default=3,
+                    help="повторов на точку (берётся минимальное время)")
     a = ap.parse_args(argv)
 
     if a.bench:
         exe = os.path.abspath(a.exe)
-        n = str(a.nx)
-        sim = ["--nx", n, "--ny", n, "--nz", n, "--t_end", str(a.t_end),
-               "--save_every", "1000000000"]
-        bench = run_benchmark(exe, a.threads or default_threads(), sim,
-                              os.path.join(os.path.dirname(exe), "bench"))
+        bench = run_scaling(exe, a.nx, a.threads or default_threads(), a.steps,
+                            os.path.join(os.path.dirname(exe), "bench"),
+                            repeat=a.repeat)
         save_to = a.save_to or os.path.join(os.path.dirname(bench), "report")
         os.makedirs(save_to, exist_ok=True)
         saved = fig_speedup(bench, save_to, a.num, a.fmt)

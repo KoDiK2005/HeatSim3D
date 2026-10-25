@@ -1,8 +1,13 @@
 /**
  * 3D Heat Transfer Simulation (FTCS)
  * Граничные условия: 6 граней с независимыми температурами
+ * Параллельная версия: OpenMP (число потоков — флаг --threads N)
  *
- * Компиляция Visual Studio: Ctrl+Shift+B (стандарт C++17)
+ * Сборка:
+ *   Linux   : g++ -O2 -fopenmp -std=c++17 heat3d.cpp -o heat3d
+ *   Windows : x86_64-w64-mingw32-g++ -O2 -fopenmp -std=c++17 -static heat3d.cpp -o heat3d.exe
+ *   Visual Studio: C/C++ -> Язык -> Поддержка OpenMP = Да (/openmp), стандарт C++17
+ * Без -fopenmp (/openmp) получается последовательная версия.
  */
 
 #include <iostream>
@@ -38,7 +43,9 @@ double centerTemp(const Grid3D& T, int NX, int NY, int NZ) {
 
 double meanTemp(const Grid3D& T) {
     double sum = 0.0;
-    for (double v : T) sum += v;
+    const int n = (int)T.size();
+    #pragma omp parallel for reduction(+:sum) schedule(static)
+    for (int q = 0; q < n; ++q) sum += T[q];
     return sum / (double)T.size();
 }
 
@@ -148,16 +155,19 @@ int main(int argc, char* argv[]) {
     Grid3D T_new(p.nx * p.ny * p.nz, 0.0);
 
     auto applyBC = [&](Grid3D& g) {
+        #pragma omp parallel for schedule(static)
         for (int j = 0; j < p.ny; ++j)
             for (int k = 0; k < p.nz; ++k) {
                 g[idx(0,      j, k, p.ny, p.nz)] = p.t_xm;
                 g[idx(p.nx-1, j, k, p.ny, p.nz)] = p.t_xp;
             }
+        #pragma omp parallel for schedule(static)
         for (int i = 0; i < p.nx; ++i)
             for (int k = 0; k < p.nz; ++k) {
                 g[idx(i, 0,      k, p.ny, p.nz)] = p.t_ym;
                 g[idx(i, p.ny-1, k, p.ny, p.nz)] = p.t_yp;
             }
+        #pragma omp parallel for schedule(static)
         for (int i = 0; i < p.nx; ++i)
             for (int j = 0; j < p.ny; ++j) {
                 g[idx(i, j, 0,       p.ny, p.nz)] = p.t_zm;
@@ -175,6 +185,8 @@ int main(int argc, char* argv[]) {
     const double rz = p.alpha * dt / (dz * dz);
 
     std::cout << "  Stability sum: " << 2*(rx+ry+rz) << " (must be < 1)\n\n";
+
+    const int NIJ = (p.nx - 2) * (p.ny - 2);
 
     auto t0 = high_resolution_clock::now();
     double time = 0.0;
@@ -196,16 +208,22 @@ int main(int argc, char* argv[]) {
         }
         if (step == NSTEPS) break;
 
-        #pragma omp parallel for schedule(static) collapse(2)
-        for (int i = 1; i < p.nx-1; ++i)
-            for (int j = 1; j < p.ny-1; ++j)
-                for (int k = 1; k < p.nz-1; ++k) {
-                    double Tijk = T[idx(i,  j,  k,  p.ny, p.nz)];
-                    double d2x  = T[idx(i+1,j,  k,  p.ny, p.nz)] - 2*Tijk + T[idx(i-1,j,  k,  p.ny, p.nz)];
-                    double d2y  = T[idx(i,  j+1,k,  p.ny, p.nz)] - 2*Tijk + T[idx(i,  j-1,k,  p.ny, p.nz)];
-                    double d2z  = T[idx(i,  j,  k+1,p.ny, p.nz)] - 2*Tijk + T[idx(i,  j,  k-1,p.ny, p.nz)];
-                    T_new[idx(i,j,k,p.ny,p.nz)] = Tijk + rx*d2x + ry*d2y + rz*d2z;
-                }
+        // Циклы по i и j слиты в один (аналог collapse(2), но совместимо
+        // с OpenMP 2.0 в Visual Studio): (nx-2)*(ny-2) независимых столбцов по k
+        // делятся между потоками поровну. Каждая точка T_new пишется ровно
+        // одним потоком, T только читается — гонок данных нет.
+        #pragma omp parallel for schedule(static)
+        for (int ij = 0; ij < NIJ; ++ij) {
+            const int i = 1 + ij / (p.ny - 2);
+            const int j = 1 + ij % (p.ny - 2);
+            for (int k = 1; k < p.nz-1; ++k) {
+                double Tijk = T[idx(i,  j,  k,  p.ny, p.nz)];
+                double d2x  = T[idx(i+1,j,  k,  p.ny, p.nz)] - 2*Tijk + T[idx(i-1,j,  k,  p.ny, p.nz)];
+                double d2y  = T[idx(i,  j+1,k,  p.ny, p.nz)] - 2*Tijk + T[idx(i,  j-1,k,  p.ny, p.nz)];
+                double d2z  = T[idx(i,  j,  k+1,p.ny, p.nz)] - 2*Tijk + T[idx(i,  j,  k-1,p.ny, p.nz)];
+                T_new[idx(i,j,k,p.ny,p.nz)] = Tijk + rx*d2x + ry*d2y + rz*d2z;
+            }
+        }
 
         applyBC(T_new);
         std::swap(T, T_new);
