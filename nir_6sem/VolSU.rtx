@@ -1,0 +1,204 @@
+\ProvidesFile{VolSU.rtx}
+
+\newcommand\bachelor@the{\default@the}
+\bachelor@the
+
+\AtBeginDocument{
+
+    \renewcommand\labelitemi{---}
+
+    \renewcommand\tocpostthesection{\@postskip}
+    \renewcommand\tocpostthesubsection{\@postskip}
+    \renewcommand\tocpostthesubsubsection{\@postskip}
+
+    \renewcommand\postthesection{\@postskip}
+    \renewcommand\postthesubsection{\@postskip}
+    \renewcommand\postthesubsubsection{\@postskip}
+
+    \setcounter{tocdepth}{3}
+    \setcounter{secnumdepth}{3}
+
+    \setlist{leftmargin=0pt,labelindent=0.5cm, listparindent=0pt, itemindent=!, topsep=0pt, parsep=0pt, itemsep = 0pt}
+
+    \lstdefinestyle{customLst}{
+        basicstyle=\small\ttfamily,
+        breaklines=true,
+        numbers=left,
+        stepnumber=1,
+        numbersep=5pt,
+        tabsize=2,
+        showspaces=false,
+        showstringspaces=false
+    }
+    \lstset{basicstyle=\small,style=customLst}
+
+    \addto\captionsrussian{
+%       \def\figurename{Рисунок}
+       \def\figurename{\CYRR\cyri\cyrs\cyru\cyrn\cyro\cyrk}
+    }
+    
+    %\RequirePackage{caption}
+    \DeclareCaptionLabelSeparator{dottt}{~--- }
+    \captionsetup{labelsep=dottt, font=normalfont}
+
+    \renewcommand*{\multicitedelim}{\addcomma\space}
+
+    \newbox\namebox
+    \newdimen\signboxdim
+    \def\signature#1{%
+    \setbox\namebox=\hbox{#1}
+    \signboxdim=\dimexpr(\wd\namebox+1cm)
+    \parbox[t]{\signboxdim}{%
+        \centering
+            \hrulefill\\[-5mm]    % for a line
+            {\small #1}
+        \par}%
+    }
+
+   \newcounter{tasksCounter}
+   \setcounter{tasksCounter}{1}
+
+  \newcommand{\task}[1] {
+      \noindent\thetasksCounter.  #1 
+      \newline \hspace{1cm} \CYRO\cyrt\cyrm\cyre\cyrt\cyrk\cyra\ %
+      \cyro\ %
+      \cyrv\cyrery\cyrp\cyro\cyrl\cyrn\cyre\cyrn\cyri\cyri: \underline{\hspace{4cm}} /0 --- 100 \cyrb\cyra\cyrl\cyrl\cyro\cyrv/
+%      \newline \hspace{1cm} Отметка о выполнении: \underline{\hspace{4cm}}/0 --- 100 баллов/
+      \stepcounter{tasksCounter}
+  } 
+}
+
+% \DescribeMacro{\authorshort}\index{Макросы!\verb*+\authorshort+}
+\def\authorshort#1{\gdef\@authorshort{#1}}\authorshort{}
+
+% \DescribeMacro{\supervisor}\index{Макросы!\verb*+\supervisor+}
+\def\supervisor#1{\gdef\@supervisor{#1}}\supervisor{}
+
+% \DescribeMacro{\supervisorstatus}\index{Макросы!\verb*+\supervisorstatus+}
+\def\supervisorstatus#1{\gdef\@supervisorstatus{#1}}\supervisorstatus{}
+
+% \DescribeMacro{\consultant}\index{Макросы!\verb*+\consultant+}
+\def\consultant#1{\gdef\@consultant{#1}}\consultant{}
+
+% \DescribeMacro{\consultantstatus}\index{Макросы!\verb*+\consultantstatus+}
+\def\consultantstatus#1{\gdef\@consultantstatus{#1}}\consultantstatus{}
+
+% \DescribeMacro{\organizer}\index{Макросы!\verb*+\organizer+}
+\def\organizer#1{\gdef\@organizer{#1}}\organizer{}
+
+% \DescribeMacro{\organizerstatus}\index{Макросы!\verb*+\organizerstatus+}
+\def\organizerstatus#1{\gdef\@organizerstatus{#1}}\organizerstatus{}
+
+% \DescribeMacro{\semester}\index{Макросы!\verb*+\semester+}
+\def\semester#1{\gdef\@semester{#1}}\semester{}
+
+\def\studentlabel{\studentname\ \@group:\\ \@authorshort %
+                  \hfill\underline{\hspace{4cm}} \\[-5mm] %
+%                 \hskip 0pt plus 26fil {\small подпись}\\}
+                 \hskip 0pt plus 26fil {\small \cyrp\cyro\cyrd\cyrp\cyri\cyrs\cyrsftsn}\\}
+%%
+\def\supervisorlabel{\supervisorname:\\ \@supervisor, \@supervisorstatus %
+\hfill\underline{\hspace{4cm}} \\[-5mm] %
+%                 \hskip 0pt plus 26fil {\small подпись}\\}
+                 \hskip 0pt plus 26fil {\small \cyrp\cyro\cyrd\cyrp\cyri\cyrs\cyrsftsn}\\}
+%%
+\def\organizerlabel{\organizername:\\ \@organizer, \@organizerstatus %
+\hfill \underline{\hspace{4cm}} \\[-5mm] %
+%                 \hskip 0pt plus 26fil {\small подпись}\\}
+                 \hskip 0pt plus 26fil {\small \cyrp\cyro\cyrd\cyrp\cyri\cyrs\cyrsftsn}\\}
+%%
+\def\titlelabel{\@title \\ (\@semester)}
+%%
+
+
+%%
+\def\appos{\CYRZ\cyra\cyrv\cyre\cyrd\cyru\cyryu\cyrshch\cyri\cyrishrt\ %
+           \cyrk\cyra\cyrf\cyre\cyrd\cyrr\cyro\cyrishrt\ %  
+           \CYRI\CYRS\CYRK\CYRM}
+%%
+\def\approved{\CYRR\cyra\cyrb\cyro\cyrt\cyra\ \cyrd\cyro\cyrp\cyru\cyrshch\cyre\cyrn\cyra\ %
+              \cyrk\ \cyrz\cyra\cyrshch\cyri\cyrt\cyre}
+%%
+\def\studentname{\CYRS\cyrt\cyru\cyrd\cyre\cyrn\cyrt\ %
+                 \cyrg\cyrr\cyru\cyrp\cyrp\cyrery}
+%%
+\def\supervisorname{\CYRR\cyru\cyrk\cyro\cyrv\cyro\cyrd\cyri\cyrt\cyre\cyrl\cyrsftsn\ %
+                    \cyrp\cyrr\cyra\cyrk\cyrt\cyri\cyrk\cyri}
+%%
+\def\organizername{\CYRO\cyrt\cyrv\cyre\cyrt\cyrs\cyrt\cyrv\cyre\cyrn\cyrn\cyrery\cyrishrt\ %
+                  \cyrz\cyra\ \\ \cyro\cyrr\cyrg\cyra\cyrn\cyri\cyrz\cyra\cyrc\cyri\cyryu\ %
+                  \cyrp\cyrr\cyra\cyrk\cyrt\cyri\cyrk\cyri}
+%%
+\def\consultantname{\CYRN\cyra\cyru\cyrch\cyrn\cyrery\cyrishrt\ %
+                    \cyrk\cyro\cyrn\cyrs\cyru\cyrl\cyrsftsn\cyrt\cyra\cyrn\cyrt}
+%%
+
+\def\progressapprov{
+\begin{table}[ht!]
+    \begin{tabular}{lll}
+%        \parbox[t]{5.25cm}{\organizername} & \parbox[t]{3cm}{ \ \newline \signature{(подпись)}} & \parbox[t]{7cm}{\@organizerstatus \\ \@organizer} \\ \noalign{\bigskip}
+        \parbox[t]{5.25cm}{\organizername} & \parbox[t]{3cm}{ \ \newline \signature{(\cyrp\cyro\cyrd\cyrp\cyri\cyrs\cyrsftsn)}} & \parbox[t]{7cm}{\@organizerstatus \\ \@organizer} \\ \noalign{\bigskip}
+          \ifx\@consultant\empty
+          \else
+%              \parbox[t]{5.25cm}{\consultantname} & \parbox[t]{3cm}{ \ \newline \signature{(подпись)}} & \parbox[t]{7cm}{\@consultantstatus \\ \@consultant}
+              \parbox[t]{5.25cm}{\consultantname} & \parbox[t]{3cm}{ \ \newline \signature{(\cyrp\cyro\cyrd\cyrp\cyri\cyrs\cyrsftsn)}} & \parbox[t]{7cm}{\@consultantstatus \\ \@consultant}
+          \fi
+    \end{tabular}
+\end{table}
+\setlength{\@fptop}{0pt}
+}
+
+\if@titlepage\renewcommand\maketitle[1][]{
+  \ifthenelse{\equal{#1}{en}}{\@titlepage@entrue}{\@titlepage@enfalse}
+    
+  
+    \ifundeflength\firstskip{1.0cm}
+    \ifundeflength\secondskip{1.5cm}
+    \ifundeflength\thirdskip{3ex}
+    \ifundeflength\fourthskip{1ex}
+    %\ifundeflength\fifthskip{1ex}
+    \ifundeflength\sixthskip{2.5cm}
+    \ifundeflength\seventhskip{1.5cm}
+
+    \def\titlefont{\normalsize}
+    %\def\topiclabelfont{\large}
+    \def\topicfont{\large\bfseries}
+
+    \thispagestyle{empty}
+    \enlargethispage{2cm}
+    \vspace*{-2cm}
+    \begin{center}
+        {\instfont\@institution}
+    \end{center}
+    \vskip\firstskip
+    %Работа допущена к защите
+    {\@approved}
+    \vskip\secondskip
+    \begin{center}
+        {\@author}
+        \vskip\thirdskip
+        {\topicfont\@topic}
+        \vskip\fourthskip
+        {\titlefont\titlelabel}
+        \vskip\fourthskip\normalfont
+        {\courselabel\ \@coursenum~\@course}
+    \end{center}
+    \normalfont
+    \vskip\sixthskip
+    \hfill
+    \begin{flushleft}
+        \studentlabel
+        %%
+        \supervisorlabel
+        %%
+    \end{flushleft}
+    \vfill
+    \begin{center}
+        {\@city \: --- \@date}
+    \end{center}
+    \vskip\seventhskip
+    \normalfont\clearpage
+}
+
+%%
+%% End of file `VolSU.rtx'
