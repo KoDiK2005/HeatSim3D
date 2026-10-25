@@ -1,10 +1,9 @@
 # Отчёт по НИР, 7 семестр — параллельная OpenMP-версия HeatSim3D
 
-Сборка PDF (TeX Live: `disser`, `biblatex-gost`, `cm-super`):
-
-```
-pdflatex Thesis && biber Thesis && pdflatex Thesis && pdflatex Thesis
-```
+Сборка PDF: `latexmk` (или `pdflatex Thesis && biber Thesis && pdflatex Thesis && pdflatex Thesis`).
+Класс `disser.cls` и `titledefs.rtx` лежат в папке, поэтому проект собирается
+в онлайн-редакторах (Prism, Overleaf) без доустановки пакетов: загрузить папку
+архивом, главный файл — `Thesis.tex`, компилятор — pdfLaTeX, библиография — Biber.
 
 Пересчитать все эксперименты и рисунки главы 3 (из корня проекта):
 
