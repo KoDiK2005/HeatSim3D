@@ -12,3 +12,6 @@ bench/
 *.synctex.gz
 *.fdb_latexmk
 *.fls
+*.run.xml
+*.lof
+*.lot
