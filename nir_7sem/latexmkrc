@@ -1,0 +1,5 @@
+# Сборка: pdflatex + biber (Prism / Overleaf подхватывают этот файл автоматически)
+$pdf_mode = 1;
+$pdflatex = 'pdflatex -interaction=nonstopmode %O %S';
+$bibtex_use = 2;
+@default_files = ('Thesis.tex');
