@@ -31,6 +31,20 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 
+# ─── Масштабирование под HiDPI (Windows) ─────────────────────────────────────
+# Без этого Windows растягивает окно картинкой (размыто) и неверно сообщает
+# размер экрана при масштабе 125–150 %.
+if os.name == "nt":
+    try:
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
 # ─── Цветовая схема ──────────────────────────────────────────────────────────
 C = {
     "bg":        "#0d1117",
@@ -117,8 +131,13 @@ class HeatSimApp(tk.Tk):
         super().__init__()
         self.title("HeatSim 3D  —  Моделирование теплопроводности")
         self.configure(bg=C["bg"])
-        self.geometry("1280x820")
-        self.minsize(1000, 700)
+
+        # Коэффициент масштаба интерфейса (1.0 при 96 DPI, 1.5 при 150 %)
+        try:
+            self._scale = max(1.0, self.winfo_fpixels("1i") / 96.0)
+        except Exception:
+            self._scale = 1.0
+        self._fit_to_screen()
         self.resizable(True, True)
 
         self._proc = None
@@ -130,6 +149,32 @@ class HeatSimApp(tk.Tk):
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(200, self._late_init)
+
+    # ── Размер окна ───────────────────────────────────────────────────────────
+    def px(self, n):
+        """Пиксели с учётом масштаба экрана."""
+        return int(round(n * self._scale))
+
+    def _fit_to_screen(self):
+        """Подбирает размер окна под экран, чтобы интерфейс был виден целиком."""
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        # запас на панель задач / заголовок окна
+        avail_w, avail_h = int(sw * 0.94), int(sh * 0.88)
+        w = min(self.px(1280), avail_w)
+        h = min(self.px(820), avail_h)
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 3)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.minsize(min(self.px(760), avail_w), min(self.px(520), avail_h))
+        # На маленьких экранах сразу разворачиваем окно
+        if sw <= 1366 or sh <= 768:
+            try:
+                if os.name == "nt":
+                    self.state("zoomed")
+                else:
+                    self.attributes("-zoomed", True)
+            except tk.TclError:
+                pass
 
     # ── UI ────────────────────────────────────────────────────────────────────
     def _build_ui(self):
@@ -154,51 +199,82 @@ class HeatSimApp(tk.Tk):
         main.pack(fill="both", expand=True, padx=20, pady=12)
 
         # Левая панель — с прокруткой
+        panel_w = min(self.px(310), max(self.px(240),
+                                        int(self.winfo_screenwidth() * 0.3)))
         left_outer = tk.Frame(main, bg=C["panel"], bd=0,
                               highlightthickness=1,
                               highlightbackground=C["border"],
-                              width=310)
+                              width=panel_w)
         left_outer.pack(side="left", fill="y", padx=(0, 12))
         left_outer.pack_propagate(False)
 
+        sb_style = ttk.Style(self)
+        sb_style.theme_use("default")
+        sb_style.configure("Heat.Vertical.TScrollbar",
+                           background=C["border"], troughcolor=C["panel"],
+                           bordercolor=C["panel"], arrowcolor=C["text_dim"],
+                           relief="flat", borderwidth=0)
+        sb_style.map("Heat.Vertical.TScrollbar",
+                     background=[("active", C["text_dim"])])
+        left_sb = ttk.Scrollbar(left_outer, orient="vertical",
+                                style="Heat.Vertical.TScrollbar")
         # Canvas + Scrollbar для прокрутки содержимого
         left_canvas = tk.Canvas(left_outer, bg=C["panel"],
-                                highlightthickness=0, width=308)
+                                highlightthickness=0, width=panel_w,
+                                yscrollincrement=self.px(20))
         left_canvas.pack(side="left", fill="both", expand=True)
-
-        left_sb = ttk.Scrollbar(left_outer, orient="vertical",
-                                command=left_canvas.yview)
+        left_sb.configure(command=left_canvas.yview)
         left_canvas.configure(yscrollcommand=left_sb.set)
 
         left = tk.Frame(left_canvas, bg=C["panel"])
         left_window = left_canvas.create_window(
-            (0, 0), window=left, anchor="nw", width=308)
-
-        def _on_frame_configure(e):
-            left_canvas.configure(scrollregion=left_canvas.bbox("all"))
-
-        def _on_canvas_configure(e):
-            left_canvas.itemconfig(left_window, width=e.width)
-
-        def _on_mousewheel(e):
-            left_canvas.yview_scroll(int(-1*(e.delta/120)), "units")
-
-        left.bind("<Configure>", _on_frame_configure)
-        left_canvas.bind("<Configure>", _on_canvas_configure)
-        left_canvas.bind("<MouseWheel>", _on_mousewheel)
-        left.bind("<MouseWheel>", _on_mousewheel)
+            (0, 0), window=left, anchor="nw", width=panel_w)
 
         self._build_params(left)
 
-        # Показываем scrollbar только если контент не помещается
-        def _check_scrollbar(e=None):
-            left_canvas.update_idletasks()
-            if left_canvas.winfo_height() < left.winfo_reqheight():
-                left_sb.pack(side="right", fill="y")
-            else:
+        def _update_scroll(_=None):
+            left_canvas.configure(scrollregion=(0, 0, left.winfo_reqwidth(),
+                                                left.winfo_reqheight()))
+            # Показываем scrollbar только если контент не помещается
+            need = left_canvas.winfo_height() < left.winfo_reqheight()
+            shown = bool(left_sb.winfo_ismapped())
+            if need and not shown:
+                left_sb.pack(side="right", fill="y", before=left_canvas)
+            elif not need and shown:
                 left_sb.pack_forget()
-        left.bind("<Configure>", lambda e: [_on_frame_configure(e),
-                                             _check_scrollbar()])
+                left_canvas.yview_moveto(0)
+
+        def _on_canvas_configure(e):
+            left_canvas.itemconfig(left_window, width=e.width)
+            left_canvas.after_idle(_update_scroll)
+
+        def _on_mousewheel(e):
+            if left_canvas.winfo_height() >= left.winfo_reqheight():
+                return
+            if getattr(e, "num", None) == 4:
+                d = -1
+            elif getattr(e, "num", None) == 5:
+                d = 1
+            elif e.delta:
+                d = -1 if e.delta > 0 else 1
+            else:
+                return
+            left_canvas.yview_scroll(d * 2, "units")
+
+        def _bind_wheel(_=None):
+            self.bind_all("<MouseWheel>", _on_mousewheel)
+            self.bind_all("<Button-4>", _on_mousewheel)
+            self.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_wheel(_=None):
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Button-4>")
+            self.unbind_all("<Button-5>")
+
+        left.bind("<Configure>", lambda e: left_canvas.after_idle(_update_scroll))
+        left_canvas.bind("<Configure>", _on_canvas_configure)
+        left_outer.bind("<Enter>", _bind_wheel)
+        left_outer.bind("<Leave>", _unbind_wheel)
 
         # Правая панель
         right = tk.Frame(main, bg=C["bg"])
@@ -680,8 +756,34 @@ class HeatSimApp(tk.Tk):
         plt.close("all")
         gc.collect()
         canvas = FigureCanvasTkAgg(fig, master=tab)
+        widget = canvas.get_tk_widget()
+        # Не даём фигуре (figsize до 14x9 дюймов) раздувать окно:
+        # она подстраивается под доступное место во вкладке.
+        widget.configure(width=1, height=1)
+        widget.pack(fill="both", expand=True)
+
+        pending = {"id": None}
+
+        def _relayout():
+            pending["id"] = None
+            if widget.winfo_width() < 50 or widget.winfo_height() < 50:
+                return
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    fig.tight_layout(pad=1.2)
+                except Exception:
+                    pass
+            canvas.draw_idle()
+
+        def _on_resize(_=None):
+            if pending["id"] is not None:
+                widget.after_cancel(pending["id"])
+            pending["id"] = widget.after(150, _relayout)
+
+        widget.bind("<Configure>", _on_resize, add="+")
         canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
         return canvas
 
     def _ax_style(self, ax):
@@ -1248,8 +1350,12 @@ class HeatSimApp(tk.Tk):
         win = tk.Toplevel(self)
         win.title("О программе — HeatSim 3D")
         win.configure(bg=C["bg"])
-        win.geometry("620x580")
-        win.resizable(False, False)
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        aw = min(self.px(620), int(sw * 0.9))
+        ah = min(self.px(580), int(sh * 0.85))
+        win.geometry(f"{aw}x{ah}+{max(0, (sw - aw) // 2)}+{max(0, (sh - ah) // 3)}")
+        win.minsize(min(self.px(420), aw), min(self.px(320), ah))
+        win.resizable(True, True)
 
         # Заголовок
         tk.Label(win, text="HeatSim 3D",
@@ -1270,10 +1376,10 @@ class HeatSimApp(tk.Tk):
         txt = tk.Text(text_frame, bg=C["panel"], fg=C["text"],
                       font=("Consolas", 10), relief="flat",
                       wrap="word", padx=16, pady=12,
-                      state="normal", cursor="arrow")
-        txt.pack(fill="both", expand=True)
-
+                      state="normal", cursor="arrow", height=1)
         sb = ttk.Scrollbar(text_frame, command=txt.yview)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
         txt.configure(yscrollcommand=sb.set)
 
         # Теги форматирования
