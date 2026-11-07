@@ -15,3 +15,7 @@ bench/
 *.run.xml
 *.lof
 *.lot
+
+# Python venv для build_linux.sh
+.venv/
+.venv-build/

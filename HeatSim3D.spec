@@ -10,7 +10,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[(ENGINE, '.'), ('heat3d.cpp', '.')],
-    hiddenimports=[],
+    # report_plots импортируется внутри функций, а PDF-бэкенд matplotlib
+    # подключается неявно при savefig(...pdf) — PyInstaller их сам не видит.
+    hiddenimports=['report_plots', 'matplotlib.backends.backend_pdf'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

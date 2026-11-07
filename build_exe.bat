@@ -20,13 +20,8 @@ if errorlevel 1 (
 )
 
 echo [2/3] Сборка .exe...
-pyinstaller --onefile --windowed ^
-  --add-data "heat3d.exe;." ^
-  --add-data "heat3d.cpp;." ^
-  --hidden-import report_plots ^
-  --name "HeatSim3D" ^
-  --clean ^
-  gui.py
+rem Все параметры сборки - в HeatSim3D.spec (общий для Linux и Windows)
+pyinstaller --clean -y HeatSim3D.spec
 
 echo.
 echo [3/3] Готово!

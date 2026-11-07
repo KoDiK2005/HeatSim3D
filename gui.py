@@ -84,6 +84,24 @@ def resource_path(name):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
 
 
+def app_dir():
+    """Папка для результатов (output/, bench/).
+
+    В собранном PyInstaller-файле ресурсы распаковываются во временную папку
+    _MEIxxxx, которая удаляется при выходе, поэтому результаты пишем рядом
+    с исполняемым файлом. Если туда писать нельзя — в ~/HeatSim3D.
+    """
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    if os.access(base, os.W_OK):
+        return base
+    fallback = os.path.join(os.path.expanduser("~"), "HeatSim3D")
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
+
+
 # Расчётное ядро: heat3d.exe на Windows, heat3d на Linux
 ENGINE = "heat3d.exe" if os.name == "nt" else "heat3d"
 
@@ -143,8 +161,7 @@ class HeatSimApp(tk.Tk):
         self._proc = None
         self._running = False
         self._cmap = "inferno"
-        self._output_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "output")
+        self._output_dir = os.path.join(app_dir(), "output")
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -603,7 +620,7 @@ class HeatSimApp(tk.Tk):
 
     def _run_thread(self, exe, cmd):
         try:
-            workdir = os.path.dirname(os.path.abspath(exe))
+            workdir = app_dir()
             # Очищаем папку output перед новым запуском
             out_dir_clean = os.path.join(workdir, "output")
             if os.path.exists(out_dir_clean):
@@ -703,7 +720,7 @@ class HeatSimApp(tk.Tk):
         sim = self._build_cmd(exe, p)[1:]
         sim[sim.index("--save_every") + 1] = "1000000000"   # без записи срезов
         threads = report_plots.default_threads()
-        workdir = os.path.join(os.path.dirname(os.path.abspath(exe)), "bench")
+        workdir = os.path.join(app_dir(), "bench")
         self._running = True
         self.run_btn.config(state="disabled")
         self._log(f"[ЗАМЕР] потоки: {threads}")

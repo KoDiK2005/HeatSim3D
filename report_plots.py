@@ -33,7 +33,8 @@ ENGINE = "heat3d.exe" if os.name == "nt" else "heat3d"
 # ─── Стиль ────────────────────────────────────────────────────────────────────
 STYLE = {
     "font.family":        "serif",
-    "font.serif":         ["CMU Serif", "Latin Modern Roman", "Times New Roman",
+    # Только шрифты с кириллицей (в Latin Modern Roman её нет)
+    "font.serif":         ["CMU Serif", "Times New Roman",
                            "Liberation Serif", "DejaVu Serif"],
     "mathtext.fontset":   "cm",
     "font.size":          13,
